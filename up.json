@@ -1,0 +1,11 @@
+{
+  "name": "infura-testing",
+  "profile": "danikarik",
+  "regions": [
+    "us-east-2"
+  ],
+  "logs": {
+    "stdout": "info",
+    "stderr": "info"
+  }
+}
