@@ -21,8 +21,10 @@ import (
 type M map[string]interface{}
 
 const (
-	// InfuraMainNet is a Infura's main net address.
-	InfuraMainNet = "wss://mainnet.infura.io/ws/v3/9ce23ef47beb48d99c27eda019aed08c"
+	// InfuraMainNetTCP is a Infura's main net address.
+	InfuraMainNetTCP = "wss://mainnet.infura.io/ws/v3/9ce23ef47beb48d99c27eda019aed08c"
+	// InfuraMainNetWS is a Infura's main net address.
+	InfuraMainNetWS = "https://mainnet.infura.io/v3/9ce23ef47beb48d99c27eda019aed08c"
 )
 
 // NewRPC creates a new RPC client.
@@ -37,12 +39,12 @@ func NewRPC(ctx context.Context, url string) (*rpc.Client, error) {
 func main() {
 	ctx := context.Background()
 
-	client, err := ethclient.DialContext(ctx, "https://mainnet.infura.io/v3/9ce23ef47beb48d99c27eda019aed08c")
+	client, err := ethclient.DialContext(ctx, InfuraMainNetWS)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	infuraClient, err := NewRPC(ctx, InfuraMainNet)
+	infuraClient, err := NewRPC(ctx, InfuraMainNetTCP)
 	if err != nil {
 		log.Fatal(err)
 	}
