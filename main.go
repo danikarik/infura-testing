@@ -1,12 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
+
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 )
@@ -19,7 +25,28 @@ const (
 	InfuraMainNet = "wss://mainnet.infura.io/ws/v3/9ce23ef47beb48d99c27eda019aed08c"
 )
 
+// NewRPC creates a new RPC client.
+func NewRPC(ctx context.Context, url string) (*rpc.Client, error) {
+	client, err := rpc.DialWebsocket(ctx, url, "")
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
 func main() {
+	ctx := context.Background()
+
+	client, err := ethclient.DialContext(ctx, "https://mainnet.infura.io/v3/9ce23ef47beb48d99c27eda019aed08c")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	infuraClient, err := NewRPC(ctx, InfuraMainNet)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -27,18 +54,92 @@ func main() {
 
 	r.Get("/", InfoHandler)
 
-	r.Route("/api/v1.1/{networdID}/transactions", func(r chi.Router) {
-
-		// TODO eth_newPendingTransactionFilter, eth_getBlockByNumber (true | false), eth_getFilterChanges
+	r.Route("/api/v1.1/{networkID}/transactions", func(r chi.Router) {
 
 		r.Get("/pending", func(w http.ResponseWriter, r *http.Request) {
-			json.NewEncoder(w).Encode(M{
-				"message": "not implemented",
-			})
+			ctx := context.Background()
+			filterID := r.URL.Query().Get("filterId")
+			from := r.URL.Query().Get("from")
+
+			var fromAddress *common.Address
+			if from != "" {
+				fromAddr := common.HexToAddress(from)
+				fromAddress = &fromAddr
+			}
+
+			opts := &PendingTransactionsQuery{
+				FilterID: filterID,
+				From:     fromAddress,
+			}
+
+			result, err := PendingTransactions(ctx, infuraClient, client, opts)
+			if err != nil {
+				json.NewEncoder(w).Encode(M{
+					"success": false,
+					"message": err.Error(),
+				})
+				return
+			}
+
+			if filterID != "" {
+				cacheKey := fmt.Sprintf(ETHPendingSetTemplate, filterID)
+				set := make(map[string]struct{})
+
+				data, ok := httpCache.Get(cacheKey)
+				if ok {
+					set = data.(map[string]struct{})
+				}
+
+				n := []*Transaction{}
+				for _, tx := range result.Transactions {
+					if _, ok := set[tx.Hash().String()]; ok {
+						continue
+					}
+					set[tx.Hash().String()] = struct{}{}
+					n = append(n, tx)
+				}
+
+				httpCache.Set(cacheKey, set, ETHPedingSetTTL)
+
+				result.Transactions = n
+			}
+
+			json.NewEncoder(w).Encode(result)
 		})
 
 		r.Get("/filter", func(w http.ResponseWriter, r *http.Request) {
-			// TODO
+			ctx := r.Context()
+			var result string
+			err := infuraClient.CallContext(ctx, &result, "eth_newPendingTransactionFilter")
+			if err != nil {
+				json.NewEncoder(w).Encode(M{
+					"success": false,
+					"message": err.Error(),
+				})
+				return
+			}
+			json.NewEncoder(w).Encode(M{
+				"success": true,
+				"result":  result,
+			})
+		})
+
+		r.Get("/changes/{filterID}", func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			filterID := chi.URLParam(r, "filterID")
+			var result []string
+			err := infuraClient.CallContext(ctx, &result, "eth_getFilterChanges", filterID)
+			if err != nil {
+				json.NewEncoder(w).Encode(M{
+					"success": false,
+					"message": err.Error(),
+				})
+				return
+			}
+			json.NewEncoder(w).Encode(M{
+				"success": true,
+				"result":  result,
+			})
 		})
 	})
 

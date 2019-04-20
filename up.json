@@ -7,5 +7,9 @@
   "logs": {
     "stdout": "info",
     "stderr": "info"
+  },
+  "proxy": {
+    "timeout": 25,
+    "listen_timeout": 5
   }
 }
